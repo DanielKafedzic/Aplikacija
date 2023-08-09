@@ -2,9 +2,13 @@ package com.example.weather
 
 import android.Manifest
 import android.content.DialogInterface
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Looper
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -14,19 +18,15 @@ import androidx.core.content.ContextCompat
 import com.example.weather.api.NetworkClient
 import com.example.weather.databinding.ActivityMainBinding
 import com.example.weather.dto.WeatherTime
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.*
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private var fusedLocationProviderClient: FusedLocationProviderClient? = null
-    private var client = NetworkClient()
+    private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
+    private val client = NetworkClient()
 
     private val locationRequest = LocationRequest.create().apply {
         interval = 60000
@@ -38,15 +38,19 @@ class MainActivity : AppCompatActivity() {
         override fun onLocationResult(location: LocationResult) {
             super.onLocationResult(location)
 
-            location.lastLocation?.latitude?.let { latitude ->
-                location.lastLocation?.longitude?.let { longitude ->
-                    binding.latitude.setText(latitude.toString())
-                    binding.longitude.setText(longitude.toString())
-                    fetchWeatherData(latitude, longitude)
-                }
+            location.lastLocation?.let { lastLocation ->
+                val latitude = lastLocation.latitude
+                val longitude = lastLocation.longitude
+
+                binding.latitude.setText(latitude.toString())
+                binding.longitude.setText(longitude.toString())
+                fetchWeatherData(latitude, longitude)
+
+                fusedLocationProviderClient.removeLocationUpdates(this)
             }
         }
     }
+
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -70,26 +74,54 @@ class MainActivity : AppCompatActivity() {
             val longitude = binding.longitude.text.toString().toDoubleOrNull()
 
             if (latitude != null && longitude != null) {
+                binding.progressBar.visibility = View.VISIBLE // Show the progress bar
                 fetchWeatherData(latitude, longitude)
             } else {
                 Toast.makeText(this, "Invalid latitude or longitude", Toast.LENGTH_SHORT).show()
             }
         }
+
+        binding.lokacija.setOnClickListener {
+            requestLocationPermission()
+        }
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.action_settings -> {
+                // Handle the "Settings" menu item click here
+                return true
+            }
+            else -> return super.onOptionsItemSelected(item)
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu, menu)
+        return true
     }
 
     private fun fetchWeatherData(latitude: Double, longitude: Double) {
+        binding.progressBar.visibility = View.VISIBLE
+
         client.getForecast(latitude, longitude).enqueue(object : Callback<WeatherTime> {
             override fun onResponse(call: Call<WeatherTime>, response: Response<WeatherTime>) {
+                binding.progressBar.visibility = View.GONE
+
                 if (response.isSuccessful) {
                     val data = response.body()
-                    binding.label.text = "${data?.currentWeather?.temperature} C"
+
+                    val intent = Intent(this@MainActivity, WeatherDetailsActivity::class.java)
+                    intent.putExtras(WeatherDetailsActivity.createBundle(data?.currentWeather))
+                    startActivity(intent)
                 } else {
-                    binding.label.text =
-                        "Response code: ${response.code()}, ${response.errorBody()}"
+                    binding.label.text = getString(R.string.response_error, response.code(), response.errorBody())
                 }
             }
 
             override fun onFailure(call: Call<WeatherTime>, t: Throwable) {
+                binding.progressBar.visibility = View.GONE
+
                 Toast.makeText(
                     this@MainActivity, t.localizedMessage, Toast.LENGTH_SHORT
                 ).show()
@@ -97,6 +129,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
     }
+
 
     private fun showPermissionRationaleDialog() {
         val builder = AlertDialog.Builder(this@MainActivity)
@@ -127,7 +160,7 @@ class MainActivity : AppCompatActivity() {
                 this, Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
         ) {
-            fusedLocationProviderClient?.requestLocationUpdates(
+            fusedLocationProviderClient.requestLocationUpdates(
                 locationRequest, locationCallback, Looper.getMainLooper()
             )
         }
@@ -140,6 +173,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
+        fusedLocationProviderClient.removeLocationUpdates(locationCallback)
     }
 }
