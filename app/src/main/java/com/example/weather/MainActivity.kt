@@ -24,6 +24,7 @@ import retrofit2.Callback
 import retrofit2.Response
 
 class MainActivity : AppCompatActivity() {
+    private var data: WeatherTime? = null
     private lateinit var binding: ActivityMainBinding
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private val client = NetworkClient()
@@ -84,6 +85,15 @@ class MainActivity : AppCompatActivity() {
         binding.lokacija.setOnClickListener {
             requestLocationPermission()
         }
+        binding.button.setOnClickListener {
+            if (data != null) {
+                val intent = Intent(this@MainActivity, WeatherDetailsActivity::class.java)
+                intent.putExtras(WeatherDetailsActivity.createBundle(data?.currentWeather))
+                startActivity(intent)
+            } else {
+                Toast.makeText(this, "Unesi koordinate", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -109,11 +119,8 @@ class MainActivity : AppCompatActivity() {
                 binding.progressBar.visibility = View.GONE
 
                 if (response.isSuccessful) {
-                    val data = response.body()
+                    data = response.body()
 
-                    val intent = Intent(this@MainActivity, WeatherDetailsActivity::class.java)
-                    intent.putExtras(WeatherDetailsActivity.createBundle(data?.currentWeather))
-                    startActivity(intent)
                 } else {
                     binding.label.text = getString(R.string.response_error, response.code(), response.errorBody())
                 }
